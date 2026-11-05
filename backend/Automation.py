@@ -1,35 +1,28 @@
 # Import required libraries
+import os
+import re
+import asyncio
+import platform
+import subprocess
+import webbrowser
+from urllib.parse import quote_plus
 from webbrowser import open as webopen
-try:
-    from pywhatkit import playonyt, search
-except Exception as e:
-    playonyt, search = None, None
-    print("PyWhatKit / PyAutoGUI disabled: running in headless cloud mode without display.")
-from dotenv import dotenv_values
 from bs4 import BeautifulSoup
 from rich import print
-import os
 from dotenv import load_dotenv
 from groq import Groq
 
-# Load environment variables
-load_dotenv()
+# Safe imports for desktop-only libraries
+try:
+    from pywhatkit import playonyt, search
+except Exception:
+    playonyt, search = None, None
+    print("PyWhatKit / PyAutoGUI disabled: running in headless cloud mode without display.")
 
-# Read the Groq key properly
-GroqAPIKEY = os.getenv("GroqAPIKEY") or os.getenv("GROQ_API_KEY") or os.getenv("GroqApiKey")
-
-if not GroqAPIKEY:
-    raise ValueError("Groq API key not found in backend/Automation.py. Please set it in Render Environment.")
-
-client = Groq(api_key=GroqAPIKEY)
-import webbrowser
-import subprocess
-import requests
-import keyboard
-import asyncio
-import os
-from urllib.parse import quote_plus
-import platform
+try:
+    import keyboard
+except Exception:
+    keyboard = None
 
 # Check if we are running on Windows
 IS_WINDOWS = platform.system() == "Windows"
@@ -43,32 +36,38 @@ if IS_WINDOWS:
 else:
     print("Running in cloud/Linux: AppOpener disabled.")
     app_open, app_close = None, None
+
 def open_app(app_name):
     if IS_WINDOWS and app_open:
         app_open(app_name, match_closest=True)
     else:
         print(f"[Cloud Mode] Cannot open local app '{app_name}' on cloud/Linux.")
-# Load eniornment variables from the .env file.
-env_vars = dotenv_values(".env")
-GroqApiKey = env_vars.get("GroqApiKey")
-Username = env_vars.get("Username", "User")
 
+# Load environment variables
+load_dotenv()
 
-# Define CSS classes for paring specific elements in HTML content.
-classes = ["zCubwf", "hgKELc", "LTKOO sY7ric", "Z0LcW", "gsrt vk_bk FzvWSb YwPhnf", "pclqee",
-            "tw-data-text tw-text-small tw-ta",
-           "IZ6rdc", "O5uR6d", "webanswers-webanswers_table_webabswers-table",
-           "dDoNo ikb4Bb gsrt", "sXLaOe",
-           "LWKfKe", "VQF4g", "qv3Wpe", "kno-rdesc", "SPZz6b"]
+# Read environment variables (supports PC and Render)
+GroqAPIKEY = os.getenv("GroqAPIKEY") or os.getenv("GROQ_API_KEY") or os.getenv("GroqApiKey")
+GroqApiKey = GroqAPIKEY
+Username = os.getenv("Username", "User")
 
+if not GroqAPIKEY:
+    raise ValueError("Groq API key not found in backend/Automation.py. Please set it in Render Environment.")
+
+# Initialize the Groq client ONCE
+client = Groq(api_key=GroqAPIKEY)
+
+# Define CSS classes for parsing specific elements in HTML content.
+classes = [
+    "zCubwf", "hgKELc", "LTKOO sY7ric", "Z0LcW", "gsrt vk_bk FzvWSb YwPhnf", "pclqee",
+    "tw-data-text tw-text-small tw-ta",
+    "IZ6rdc", "O5uR6d", "webanswers-webanswers_table_webabswers-table",
+    "dDoNo ikb4Bb gsrt", "sXLaOe",
+    "LWKfKe", "VQF4g", "qv3Wpe", "kno-rdesc", "SPZz6b"
+]
 
 # Define a user-agent for making web requests.
 useragent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36'
-
-
-# Initialize the Groq client with the API key.
-client = Groq(api_key=GroqApiKey)
-
 
 # predefined professional responses for user interactions
 professional_responses = [
