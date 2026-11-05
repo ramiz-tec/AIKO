@@ -5,6 +5,7 @@ import asyncio
 import platform
 import subprocess
 import webbrowser
+import requests
 from urllib.parse import quote_plus
 from webbrowser import open as webopen
 from bs4 import BeautifulSoup
