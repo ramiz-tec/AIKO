@@ -1,41 +1,27 @@
 from googlesearch import search
 import os
-from dotenv import load_dotenv
-import os
+import re
+import datetime
+import requests
+from json import load, dump
 from dotenv import load_dotenv
 from groq import Groq
 
+# 1. Load local .env if it exists
 load_dotenv()
 
-# Check all possible spellings
+# 2. Retrieve variables using os.getenv (works on BOTH PC and Render)
+username = os.getenv("Username", "User")
+AssistantName = os.getenv("AssistantName", "Assistant")
 GroqAPIKEY = os.getenv("GroqAPIKEY") or os.getenv("GROQ_API_KEY") or os.getenv("GroqApiKey")
+GROQ_CHAT_MODEL = os.getenv("GroqModel", "openai/gpt-oss-120b")
 
+# 3. Safety check
 if not GroqAPIKEY:
     raise ValueError("Groq API key not found. Please set GroqAPIKEY in your Render Environment tab.")
 
+# 4. Initialize Groq client ONCE
 client = Groq(api_key=GroqAPIKEY)
-from json import load, dump  # Importing functions to read and write JSON files
-import datetime  # Importing datetime module for real-time date and time information
-from dotenv import dotenv_values  # Importing dotenv_values to read environment variables from a .env file
-import re
-import requests
-import os
-
-
-# Load environment variables from .env file
-env_vars = dotenv_values(".env")
-
-
-# Retrieve specific environment variables for the chatbot configuration.
-username = env_vars.get("Username")
-AssistantName = env_vars.get("AssistantName")
-GroqAPIKEY = env_vars.get("GroqApiKey")
-GROQ_CHAT_MODEL = env_vars.get("GroqModel", "openai/gpt-oss-120b")
-
-
-# Initialize the Groq client using the API key
-client = Groq(api_key=GroqAPIKEY)
-
 
 # Defin the system instructions for the chatbot.
 syatem = f""" Hello, You are a very accurate and advanced AI Chatbot named {AssistantName} which has real-time up-to-date information.
