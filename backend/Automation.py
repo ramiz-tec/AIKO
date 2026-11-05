@@ -1,5 +1,4 @@
 # Import required libraries
-from AppOpener import close, open as appopen
 from webbrowser import open as webopen
 from pywhatkit import playonyt, search
 from dotenv import dotenv_values
@@ -25,6 +24,25 @@ import keyboard
 import asyncio
 import os
 from urllib.parse import quote_plus
+import platform
+
+# Check if we are running on Windows
+IS_WINDOWS = platform.system() == "Windows"
+
+if IS_WINDOWS:
+    try:
+        from AppOpener import open as app_open, close as app_close
+    except Exception as e:
+        print(f"AppOpener failed to load: {e}")
+        app_open, app_close = None, None
+else:
+    print("Running in cloud/Linux: AppOpener disabled.")
+    app_open, app_close = None, None
+    def open_app(app_name):
+    if IS_WINDOWS and app_open:
+        app_open(app_name, match_closest=True)
+    else:
+        print(f"[Cloud Mode] Cannot open local app '{app_name}' on a cloud server.")
 
 
 # Load eniornment variables from the .env file.
