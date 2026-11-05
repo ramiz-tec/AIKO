@@ -1,5 +1,17 @@
 from googlesearch import search
-from groq import Groq  # Import the Groq library to use its API
+import os
+from dotenv import load_dotenv
+from groq import Groq
+
+load_dotenv()
+
+# Read from environment variables
+GroqAPIKEY = os.getenv("GroqAPIKEY") or os.getenv("GROQ_API_KEY")
+
+if not GroqAPIKEY:
+    print("Warning: Groq API key not found.")
+
+client = Groq(api_key=GroqAPIKEY)  # Import the Groq library to use its API
 from json import load, dump  # Importing functions to read and write JSON files
 import datetime  # Importing datetime module for real-time date and time information
 from dotenv import dotenv_values  # Importing dotenv_values to read environment variables from a .env file

@@ -5,7 +5,19 @@ from pywhatkit import playonyt, search
 from dotenv import dotenv_values
 from bs4 import BeautifulSoup
 from rich import print
+import os
+from dotenv import load_dotenv
 from groq import Groq
+
+load_dotenv()
+
+# Read from environment variables
+GroqAPIKEY = os.getenv("GroqAPIKEY") or os.getenv("GROQ_API_KEY")
+
+if not GroqAPIKEY:
+    print("Warning: Groq API key not found.")
+
+client = Groq(api_key=GroqAPIKEY)
 import webbrowser
 import subprocess
 import requests
