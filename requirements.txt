@@ -11,11 +11,9 @@ cohere
 googlesearch-python
 selenium
 mtranslate
-pygame
 edge-tts
 pyQt5
 webdriver-manager
 SpeechRecognition
-PyAudio
 fastapi
 uvicorn[standard]
