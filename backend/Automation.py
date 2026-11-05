@@ -38,12 +38,11 @@ if IS_WINDOWS:
 else:
     print("Running in cloud/Linux: AppOpener disabled.")
     app_open, app_close = None, None
-    def open_app(app_name):
+  def open_app(app_name):
     if IS_WINDOWS and app_open:
         app_open(app_name, match_closest=True)
     else:
-        print(f"[Cloud Mode] Cannot open local app '{app_name}' on a cloud server.")
-
+        print(f"[Cloud Mode] Cannot open local app '{app_name}' on cloud/Linux.")
 
 # Load eniornment variables from the .env file.
 env_vars = dotenv_values(".env")
