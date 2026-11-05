@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: aiko-api
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn backend.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: aiko-data
+      mountPath: /opt/render/project/src/Data
+      sizeGB: 1
+    envVars:
+      - key: AIKO_API_TOKEN
+        sync: false
+      - key: GroqApiKey
+        sync: false
+      - key: Account_ID
+        sync: false
+      - key: API_Token
+        sync: false

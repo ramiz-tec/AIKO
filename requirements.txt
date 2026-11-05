@@ -17,3 +17,5 @@ pyQt5
 webdriver-manager
 SpeechRecognition
 PyAudio
+fastapi
+uvicorn[standard]

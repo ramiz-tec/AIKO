@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07121d">
+  <meta name="description" content="AIKO chat, voice, image studio, and reminders.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="stylesheet" href="/app.css">
+  <title>AIKO</title>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="AIKO home"><span class="brand-orb"></span>AIKO</a>
+    <button id="settings-button" class="icon-button" aria-label="Connection settings" title="Connection settings">⚙</button>
+  </header>
+
+  <main>
+    <section id="connection-card" class="connection-card" hidden>
+      <form id="connection-form">
+        <h1>Connect to AIKO</h1>
+        <p>Enter your AIKO server address and API token. The token stays in this browser session.</p>
+        <label for="server-url">Server URL</label>
+        <input id="server-url" name="server-url" type="url" inputmode="url"
+          placeholder="https://your-aiko-service.onrender.com" autocomplete="url" required>
+        <label for="api-token">AIKO API token</label>
+        <input id="api-token" name="api-token" type="password" autocomplete="off" required>
+        <button class="primary-button" type="submit">Connect</button>
+      </form>
+      <p id="connection-error" class="error" role="alert"></p>
+    </section>
+
+    <nav class="tabs" aria-label="AIKO features">
+      <button class="tab active" data-tab="chat" type="button">Chat</button>
+      <button class="tab" data-tab="images" type="button">Images</button>
+      <button class="tab" data-tab="reminders" type="button">Reminders</button>
+    </nav>
+
+    <section id="chat-panel" class="panel active" aria-label="Chat with AIKO">
+      <div id="chat-messages" class="chat-messages" aria-live="polite">
+        <p class="empty-state">Talk or type to AIKO. Your conversation stays in this page until you close it.</p>
+      </div>
+      <p id="chat-error" class="error" role="alert"></p>
+      <div class="chat-controls">
+        <button id="voice-button" class="mic-button" type="button" aria-label="Dictate message" title="Dictate message">🎙</button>
+        <textarea id="chat-input" rows="1" maxlength="2000" placeholder="Message AIKO" aria-label="Message AIKO"></textarea>
+        <button id="send-button" class="send-button" type="button" aria-label="Send message">➤</button>
+      </div>
+      <label class="speak-toggle"><input id="speak-replies" type="checkbox" checked> Speak replies</label>
+    </section>
+
+    <section id="images-panel" class="panel" aria-label="Image studio">
+      <form id="image-form" class="feature-form">
+        <label for="image-prompt">What should AIKO create?</label>
+        <textarea id="image-prompt" maxlength="1000" rows="3" placeholder="A vivid watercolor of a moonlit garden"></textarea>
+        <button class="primary-button" type="submit">Generate images</button>
+      </form>
+      <p id="image-error" class="error" role="alert"></p>
+      <div id="image-results" class="image-results" aria-live="polite"></div>
+    </section>
+
+    <section id="reminders-panel" class="panel" aria-label="Reminders and events">
+      <form id="reminder-form" class="feature-form">
+        <label for="reminder-title">What should AIKO remind you about?</label>
+        <input id="reminder-title" type="text" maxlength="300" placeholder="Call Sam">
+        <label for="reminder-due">Date and time</label>
+        <input id="reminder-due" type="datetime-local" required>
+        <button class="primary-button" type="submit">Save reminder</button>
+      </form>
+      <p id="reminder-error" class="error" role="alert"></p>
+      <h2>Saved reminders</h2>
+      <ul id="reminder-list" class="reminder-list"><li class="empty-state">Connect to load reminders.</li></ul>
+      <p class="note">Notifications work while this page is open. For reliable alerts when iOS suspends the app, native push notifications require additional server setup.</p>
+    </section>
+  </main>
+
+  <dialog id="settings-dialog">
+    <form id="settings-form" method="dialog">
+      <h2>Connection</h2>
+      <p>Use your deployed AIKO service URL. Keep your server token private.</p>
+      <label for="settings-server-url">Server URL</label>
+      <input id="settings-server-url" type="url" inputmode="url" required>
+      <label for="settings-api-token">AIKO API token</label>
+      <input id="settings-api-token" type="password" autocomplete="off">
+      <p id="settings-error" class="error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="disconnect-button" class="quiet-button" type="button">Disconnect</button>
+        <button class="primary-button" type="submit">Save</button>
+      </div>
+      <button id="close-settings" class="close-dialog" type="button" aria-label="Close settings">×</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
