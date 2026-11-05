@@ -8,9 +8,22 @@ import math
 import re
 import sys
 import os
-import pyaudio
+try:
+    import pyaudio
+    HAS_AUDIO = True
+except ImportError:
+    pyaudio = None
+    HAS_AUDIO = False
+    print("PyAudio not available (running in cloud/headless mode)")
 from datetime import datetime
 from threading import Event
+try:
+    import pyaudio
+    HAS_AUDIO = True
+except ImportError:
+    pyaudio = None
+    HAS_AUDIO = False
+    print("PyAudio not available (running in cloud/headless mode)")
 
 
 env_vars = dotenv_values(".env")
