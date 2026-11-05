@@ -2,38 +2,22 @@
 from rich import print
 from dotenv import dotenv_values
 import os
+import cohere
 from dotenv import load_dotenv
 
-load_dotenv()  # Loads .env if it exists locally on your PC
+# 1. Load local .env file if present on your PC
+load_dotenv()
 
-# This checks both your local .env AND Render's Environment tab:
-api_key = os.getenv("CohereApiKey")
+# 2. Read the key from the environment (works on PC AND Render)
+Cohere_ApiKey = os.getenv("CohereApiKey")
 
-if not api_key:
-    print("Cohere API key not found. Please check your .env file.")
-
-
-
-
-# Load environment variables from .env file
-env_vars = dotenv_values(".env")
-
-
-
-
-# retrieve API key
-
-
-Cohere_ApiKey = env_vars.get("CohereApiKey")
-# Check for missing API key
+# 3. Check if key exists
 if not Cohere_ApiKey:
-    print("[red]Cohere API key not found. Please check your .env file.[/red]")
+    print("[red]Cohere API key not found. Please set CohereApiKey in your environment or .env file.[/red]")
     exit(1)
 
-
-# create a Cohere client using the API key
+# 4. Initialize Cohere client
 co = cohere.Client(api_key=Cohere_ApiKey)
-
 
 # define a list of recognized functions for task categorization
 funcs  = [
