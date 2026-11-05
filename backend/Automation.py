@@ -1,6 +1,10 @@
 # Import required libraries
 from webbrowser import open as webopen
-from pywhatkit import playonyt, search
+try:
+    from pywhatkit import playonyt, search
+except Exception as e:
+    playonyt, search = None, None
+    print("PyWhatKit / PyAutoGUI disabled: running in headless cloud mode without display.")
 from dotenv import dotenv_values
 from bs4 import BeautifulSoup
 from rich import print
