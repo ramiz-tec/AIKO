@@ -12,13 +12,14 @@ import os
 from dotenv import load_dotenv
 from groq import Groq
 
+# Load environment variables
 load_dotenv()
 
-# Read from environment variables
-GroqAPIKEY = os.getenv("GroqAPIKEY") or os.getenv("GROQ_API_KEY")
+# Read the Groq key properly
+GroqAPIKEY = os.getenv("GroqAPIKEY") or os.getenv("GROQ_API_KEY") or os.getenv("GroqApiKey")
 
 if not GroqAPIKEY:
-    print("Warning: Groq API key not found.")
+    raise ValueError("Groq API key not found in backend/Automation.py. Please set it in Render Environment.")
 
 client = Groq(api_key=GroqAPIKEY)
 import webbrowser
