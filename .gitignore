@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+**/__pycache__/
+data/
+Data/
+frontend/files/
+frontend/Files/
+*.py[cod]
