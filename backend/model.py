@@ -1,6 +1,16 @@
-import cohere
+
 from rich import print
 from dotenv import dotenv_values
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # Loads .env if it exists locally on your PC
+
+# This checks both your local .env AND Render's Environment tab:
+api_key = os.getenv("CohereApiKey")
+
+if not api_key:
+    print("Cohere API key not found. Please check your .env file.")
 
 
 
