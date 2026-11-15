@@ -26,7 +26,13 @@ import math
 import re
 import os
 import time
-import pyaudio
+try:
+    import pyaudio
+    HAS_AUDIO = True
+except ImportError:
+    pyaudio = None
+    HAS_AUDIO = False
+    print("PyAudio not available (running in cloud/headless mode)")
 from datetime import datetime
 from threading import Event, Lock
 
@@ -331,6 +337,8 @@ def MicButtonClosed():
 
 
 def GetMicrophoneDevices():
+     if not HAS_AUDIO:
+          return [], None
      audio = pyaudio.PyAudio()
      try:
           devices = []

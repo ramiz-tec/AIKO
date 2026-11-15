@@ -5,7 +5,19 @@ import os
 import glob
 import re
 import requests
+import os
+from dotenv import load_dotenv
 from groq import Groq
+
+load_dotenv()
+
+# Read from environment variables
+GroqAPIKEY = os.getenv("GroqAPIKEY") or os.getenv("GROQ_API_KEY")
+
+if not GroqAPIKEY:
+    print("Warning: Groq API key not found.")
+
+client = Groq(api_key=GroqAPIKEY)
 # Try to import the local realtime search engine module and helpers; continue gracefully if unavailable
 try:
     from backend import RealtimeSearchEngine as realtime_module
