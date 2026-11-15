@@ -8,31 +8,55 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 _AUDIO_RATE = 16000
 _AUDIO_CHUNK_SIZE = 1024
-_MIN_DOUBLE_SOUND_GAP = 0.12
+_MIN_DOUBLE_SOUND_GAP = 0.25
 _MAX_DOUBLE_SOUND_GAP = 0.8
+_CALIBRATION_SECONDS = 1.0
+_MIN_SOUND_RMS = 1800.0
+_MIN_SOUND_PEAK = 12000
+_QUIET_SECONDS_TO_REARM = 0.12
 
 
 class DoubleSoundDetector:
     def __init__(self):
         self._noise_level = 300.0
+        self._started_at = None
         self._last_sound_at = None
         self._armed = True
+        self._quiet_since = None
 
     def process_levels(self, rms: float, peak: int, timestamp: float) -> bool:
-        threshold = max(900.0, self._noise_level * 2.5)
+        if self._started_at is None:
+            self._started_at = timestamp
+
+        threshold = max(_MIN_SOUND_RMS, self._noise_level * 4.0)
         is_sharp_sound = (
             rms >= threshold
-            and peak >= max(5000, self._noise_level * 6)
-            and peak >= rms * 2
+            and peak >= max(_MIN_SOUND_PEAK, self._noise_level * 8)
+            and peak >= rms * 3
         )
-        if not is_sharp_sound:
-            self._armed = True
+        if timestamp - self._started_at < _CALIBRATION_SECONDS:
             self._noise_level = max(
                 100.0,
                 self._noise_level * 0.95 + min(rms, threshold) * 0.05,
             )
             return False
 
+        if not is_sharp_sound:
+            self._noise_level = max(
+                100.0,
+                self._noise_level * 0.95 + min(rms, threshold) * 0.05,
+            )
+            quiet_threshold = max(500.0, self._noise_level * 1.8)
+            if rms <= quiet_threshold:
+                if self._quiet_since is None:
+                    self._quiet_since = timestamp
+                elif timestamp - self._quiet_since >= _QUIET_SECONDS_TO_REARM:
+                    self._armed = True
+            else:
+                self._quiet_since = None
+            return False
+
+        self._quiet_since = None
         if not self._armed:
             return False
         self._armed = False

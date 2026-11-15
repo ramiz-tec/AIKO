@@ -13,6 +13,7 @@ cohere>=7.3.1,<8
 googlesearch-python
 selenium
 mtranslate
+pygame
 edge-tts
 pyQt5
 webdriver-manager

@@ -123,17 +123,18 @@ me see what the weather looks like” go straight to a Google search for
 
 ### Optional hand tracking
 
-Click **Start Hands** on the conversation map to start local webcam tracking,
-or make two sharp sounds (claps or snaps) within 0.8 seconds. Click **Stop
-Hands** to stop tracking. It stays on as you switch between the map, chat, and
-generated-image windows, and stops when you turn it off or close AIKO. While
-enabled, the hand pointers remain visible across the desktop and can interact
-with AIKO or other apps. AIKO processes hand landmarks locally and does not
-save or upload camera frames.
+Click **Start Hands** on the conversation map to start local webcam tracking;
+click **Stop Hands** there to stop it. Tracking is off by default.
+It stays on as you switch between the map, chat, and generated-image windows,
+and stops when you turn it off or close AIKO. While enabled, the hand pointers
+remain visible across the desktop and can interact with AIKO or other apps.
+AIKO processes hand landmarks locally and does not save or upload camera
+frames.
 
-The sound trigger is always listening through the selected microphone while
-AIKO is running, even when hand tracking is off. It analyzes sound locally and
-does not record or upload audio. Closing AIKO stops the listener.
+AIKO automatically listens through the selected microphone for two sharp sounds
+(claps or snaps) within 0.8 seconds to start hand tracking. The listener is
+active while AIKO is running, even when hand tracking is off. Audio is analyzed
+locally and is not recorded or uploaded.
 
 - With one hand, double-pinch to click. A single pinch held briefly and moved
   grabs/drags instead, so it is distinct from a click. This works over visible
@@ -155,8 +156,9 @@ does not record or upload audio. Closing AIKO stops the listener.
 Hand tracking requires a working camera, the `mediapipe` package included in
 `requirements.txt`, and the bundled local model at
 `backend/models/hand_landmarker.task`. Camera access begins only after clicking
-**Start Hands** or after the sound trigger detects a double clap/snap. The model
-is from Google's MediaPipe hand-landmarker release under the Apache 2.0 license.
+**Start Hands** or after the sound trigger detects two sharp sounds. The model
+is from Google's MediaPipe hand-landmarker release under the Apache 2.0
+license.
 
 ## Local 3D workspace
 

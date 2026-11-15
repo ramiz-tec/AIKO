@@ -1751,14 +1751,6 @@ class ConversationMapScreen(QWidget):
      def start_double_sound_trigger(self):
           worker = self.double_sound_trigger_worker
           if worker is not None and worker.isRunning():
-               worker.requestInterruption()
-               if worker.wait(2500):
-                    self._double_sound_trigger_finished(worker)
-               else:
-                    self.double_sound_trigger_status.setText(
-                         "The previous microphone stream is still closing; "
-                         "sound listening could not restart."
-                    )
                return
 
           device_index = None
@@ -2721,7 +2713,6 @@ class ConversationMapScreen(QWidget):
           device_index = self.input_device_combo.itemData(index)
           if device_index is not None:
                SetMicrophoneDevice(device_index)
-               self.start_double_sound_trigger()
 
      def create_conversation_orb(self):
           self.selected_conversation_path = CreateConversationOrb()

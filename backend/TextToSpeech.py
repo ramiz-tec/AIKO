@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 import edge_tts
-import pywhatkit
+import pygame
 from dotenv import dotenv_values
 
 
