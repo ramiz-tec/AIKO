@@ -97,7 +97,11 @@ def _level_reporter(callback):
     return report
 
 
-def _speak_with_windows_mark(text, level_callback=None):
+def _speak_with_windows_mark(
+    text,
+    level_callback=None,
+    should_continue=lambda: True,
+):
     report_level = _level_reporter(level_callback)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -182,6 +186,10 @@ def _speak_with_windows_mark(text, level_callback=None):
 
         deadline = time.monotonic() + 120
         while process.poll() is None:
+            if should_continue() is False:
+                process.terminate()
+                process.wait(timeout=2)
+                return False
             if time.monotonic() >= deadline:
                 raise RuntimeError("Windows speech synthesis timed out after 120 seconds.")
             try:
@@ -204,6 +212,7 @@ def _speak_with_windows_mark(text, level_callback=None):
             process.wait()
         progress_path.unlink(missing_ok=True)
         report_level(0.0)
+    return True
 
 
 def TTS(Text, func=lambda r=None: True, level_callback=None):
@@ -211,7 +220,8 @@ def TTS(Text, func=lambda r=None: True, level_callback=None):
     try:
         if os.name == "nt":
             try:
-                _speak_with_windows_mark(str(Text), report_level)
+                if not _speak_with_windows_mark(str(Text), report_level, func):
+                    return True
                 return True
             except Exception as windows_error:
                 print(

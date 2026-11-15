@@ -86,6 +86,14 @@ def _extract_due_time(text: str, now: datetime) -> tuple[datetime, str]:
         text,
         re.IGNORECASE,
     )
+    later_match = re.search(
+        r"\b(?:later|in a while|sometime later)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not time_match and later_match:
+        remainder = text[:later_match.start()] + " " + text[later_match.end():]
+        return now + timedelta(hours=1), remainder
     if not time_match:
         raise ValueError(
             "What date and time should I remind you? For example, "
@@ -158,7 +166,7 @@ def ParseReminderRequest(query: str, now: datetime | None = None) -> tuple[str, 
     )
     title = re.sub(
         r"^(?:remind(?:\s+me)?\b|reminder(?:\s+for)?\b|"
-        r"set\s+(?:a\s+)?reminder(?:\s+for\s+me)?\b|"
+        r"set\s+(?:me\s+)?(?:a\s+)?reminder(?:\s+for\s+me)?\b|"
         r"(?:save|add)\s+(?:(?:a|an|the|this)\s+)?(?:reminder|event)|"
         r"schedule(?:\s+(?:a|an|the)\s+)?(?:reminder|event)?|"
         r"plan\s+for(?:\s+me)?(?:\s+to)?)\s*",
@@ -178,7 +186,20 @@ def ParseReminderRequest(query: str, now: datetime | None = None) -> tuple[str, 
         title,
         flags=re.IGNORECASE,
     )
+    title = re.sub(
+        r"\b(?:part|section|piece|area)\s+of\s+(?:the\s+)?code\b",
+        "code",
+        title,
+        flags=re.IGNORECASE,
+    )
+    title = re.sub(
+        r"\b(?:that|this|these|those)\b",
+        "",
+        title,
+        flags=re.IGNORECASE,
+    )
     title = title.strip(" \t\r\n.,!?")
+    title = re.sub(r"\s+", " ", title)
     title = re.sub(r"\s+for\s+(?:me|us)\s*$", "", title, flags=re.IGNORECASE)
     title = title.strip(" \t\r\n.,!?")
     if not title:
@@ -209,6 +230,33 @@ def ListReminders() -> list[dict]:
     with _STORE_LOCK:
         reminders = _read_reminders()
     return sorted(reminders, key=lambda item: item.get("due_at", ""))
+
+
+def AcknowledgeReminder(reminder_id: str) -> bool:
+    """Delete one reminder only after its user acknowledgement."""
+    if not reminder_id:
+        return False
+    with _STORE_LOCK:
+        reminders = _read_reminders()
+        remaining = [
+            reminder for reminder in reminders
+            if reminder.get("id") != reminder_id
+        ]
+        if len(remaining) == len(reminders):
+            return False
+        _write_reminders(remaining)
+    return True
+
+
+def IsReminderAcknowledgement(query: str) -> bool:
+    normalized = re.sub(r"[\W_]+", " ", query.casefold()).strip()
+    return normalized in {
+        "ok",
+        "okay",
+        "thank you",
+        "thanks",
+        "will do",
+    }
 
 
 def TakeDueReminders(now: datetime | None = None) -> list[dict]:

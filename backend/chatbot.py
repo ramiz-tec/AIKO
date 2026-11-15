@@ -213,8 +213,31 @@ def _chat_error_message(error):
     return f"The AI service request failed ({error_type}). Check the terminal for the error details."
 
 
+def _workspace_system_messages(workspace_context):
+    if not workspace_context:
+        return []
+    return [{
+        "role": "system",
+        "content": (
+            "Current AIKO workspace context, provided only for this "
+            "conversation request:\n"
+            f"{workspace_context}\n"
+            "Use these details when they help answer the user. For requests "
+            "to help with current work, refer to the relevant project and ask "
+            "a focused follow-up question when the user has not said what "
+            "they need."
+        ),
+    }]
+
+
 # Restore the original ChatBot function with retry limit
-def ChatBot(Query, retry_count=0, max_retries=3, user_already_logged=False):
+def ChatBot(
+    Query,
+    retry_count=0,
+    max_retries=3,
+    user_already_logged=False,
+    workspace_context=None,
+):
     """ This function sends the user's query to the chatbot and returns the AI's response. """
 
 
@@ -248,7 +271,11 @@ def ChatBot(Query, retry_count=0, max_retries=3, user_already_logged=False):
                 if not support_text or not support_text.strip():
                     return ""
                 extra_sys = [{"role": "system", "content": f"Realtime information:\n{support_text}"}, {"role": "system", "content": RealTimeInformation()}]
-                use_messages = SystemChatBot + extra_sys + (msg_list if msg_list is not None else messages)
+                system_messages = (
+                    SystemChatBot
+                    + _workspace_system_messages(workspace_context)
+                )
+                use_messages = system_messages + extra_sys + (msg_list if msg_list is not None else messages)
                 # non-streaming for simplicity
                 completion2 = client.chat.completions.create(
                     model=GROQ_CHAT_MODEL,
@@ -498,9 +525,12 @@ def ChatBot(Query, retry_count=0, max_retries=3, user_already_logged=False):
         # Make a request to the OpenAI API for a response.
         if client is None:
             raise RuntimeError("GroqApiKey is missing from .env.")
+        system_messages = (
+            SystemChatBot + _workspace_system_messages(workspace_context)
+        )
         completion = client.chat.completions.create(
             model=GROQ_CHAT_MODEL,
-            messages=SystemChatBot + extra_system + messages,
+            messages=system_messages + extra_system + messages,
             max_tokens=1024,  # Set the maximum number of tokens for the response.
             temperature=0.7,  # Set the temperature for response variability.
             top_p=1,  # Use nucleus sampling to control diversity.
@@ -548,7 +578,7 @@ def ChatBot(Query, retry_count=0, max_retries=3, user_already_logged=False):
                     print("[DEBUG_CHATBOT] attempting non-stream fallback")
                 completion2 = client.chat.completions.create(
                     model=GROQ_CHAT_MODEL,
-                    messages=SystemChatBot + [{"role": "system", "content": RealTimeInformation()}] + messages,
+                    messages=system_messages + [{"role": "system", "content": RealTimeInformation()}] + messages,
                     max_tokens=1024,
                     temperature=0.7,
                     top_p=1,
@@ -631,7 +661,13 @@ def ChatBot(Query, retry_count=0, max_retries=3, user_already_logged=False):
         status_code = getattr(e, "status_code", None)
         print(f"[ERROR] Chat request failed ({type(e).__name__}, HTTP {status_code}).")
         if retry_count < max_retries:
-            return ChatBot(Query, retry_count + 1, max_retries, True)
+            return ChatBot(
+                Query,
+                retry_count + 1,
+                max_retries,
+                True,
+                workspace_context,
+            )
         error_message = _chat_error_message(e)
         append_to_chatlogs("assistant", error_message)
         return error_message
@@ -642,8 +678,6 @@ if __name__ == "__main__":
     while True:
         user_input = input("Enter your question: ")
         print(ChatBot(user_input))  # Call the ChatBot function with user input and print the response.
-
-
 
 
 

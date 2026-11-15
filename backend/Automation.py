@@ -54,7 +54,11 @@ SystemChatBot = [{"role": "system", "content": f"Hello, I am {Username}, You're 
 
 # Function to preform google search.
 def GoogleSearch(Topic):
-    search(Topic)
+    if not Topic or not Topic.strip():
+        if not webbrowser.open("https://www.google.com"):
+            raise RuntimeError("Could not open Google in the default browser.")
+    else:
+        search(Topic.strip())
     return True
 
 

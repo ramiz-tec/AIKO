@@ -28,8 +28,8 @@ co = cohere.Client(api_key=Cohere_ApiKey)
 # define a list of recognized functions for task categorization
 funcs  = [
     "exit", "general", "realtime", "open", "close", "play",
-    "generate image", "system", "content", "google search",
-    "youtube search", "reminder"
+    "generate image", "workspace", "spotify", "system", "content",
+    "google search", "youtube search", "reminder"
 ]
 
 
@@ -49,8 +49,23 @@ respond with 'realtime (query)' if a query can not be answered by a LLM model, b
 respond with 'open (application name or website name)' if the query requires opening an application or website.
 respond with 'exit(application name or websitie name)' if the query requires closing the application.
 respond with 'play(song name)' if the query requires playing a song.
-respond with 'generate image(image prompt)' if the query requires generating an image.
-respond with 'reminder (datetime with message)' if the query requires setting a reminder.
+respond with 'generate image(image prompt)' only when the user explicitly asks for an image or picture.
+respond with 'workspace create(item prompt)' when the user asks to generate, create, or make a 3D item.
+The words 'generate', 'create', and 'make' by themselves are item-generation commands, not image requests.
+For action categories, keep the command separate from its subject: remove request framing such as
+'please', 'can you', and 'for me', and do not repeat the command verb in the payload.
+Preserve meaningful subject details, but omit filler references such as 'that part of the code'.
+Do not invent a missing subject, file path, project name, date, or time; leave the payload empty
+so the assistant can ask a follow-up question.
+Examples:
+- 'make me a small wooden stool' -> workspace create(small wooden stool)
+- 'make an image of a glass house' -> generate image(glass house)
+- 'remind me to update that part of the code later' -> reminder (update code later)
+Voice workspace actions may open or close a project, create a folder, edit or transform the
+selected hologram, import a named file, or export an STL. Keep the requested action explicit.
+respond with 'spotify liked songs' when the user asks to play their Liked Songs on Spotify.
+Treat 'drop my needle', 'play some toons', and 'serenade me' as requests to play music.
+respond with 'reminder (task and requested time)' if the query requires setting a reminder.
 respond with 'system(tasks name)' if query is asking to mute, unmute, volume up, volume down, or any other system related task.
 respond with 'content(topic)' if the query is asking to write any type of content like application, website, blog, article, etc.
 respond with 'google search(topic)' if the query is asking to search something on google.
@@ -97,7 +112,7 @@ def FirstLayerDMM(prompt: str = "test") -> list[str]:
         stream = co.chat_stream(
             model='command-r-plus',
             message=history_str,
-            temperature=0.7,
+            temperature=0.1,
             prompt_truncation='off',
             connectors=[],
             preamble=preamble,
@@ -152,5 +167,3 @@ if __name__ == "__main__":
             print(result.split()[0])
         else:
             print(result)
-
-

@@ -11,25 +11,60 @@ GetAssistantStatus,
 GetActiveChatLogPath,
 ActivateConversation,
 UpdateConversationOrbCategory,
+GetSelectedGeneratedImage,
+MicButtonClosed,
 SetSpeechLevel,
 SelectGeneratedImage,
-QueueImageGallery )
+QueueImageGallery,
+OpenWorkspace,
+ControlWorkspace,
+GetWorkspaceContext,
+ShowReminderNotification,
+AcknowledgeReminderNotification,
+UpdateBreakingNews,
+)
 from backend.model import FirstLayerDMM
 from backend.RealtimeSearchEngine import RealtimeSearchEngine
 from backend.Automation import (
     Automation, OpenApp, CloseApp, PlayYoutube, content,
-    YouTubeSearch, System, GoogleSearch as GoogleSearchAuto
+    YouTubeSearch, System,
+    GoogleSearch as GoogleSearchAuto,
 )
 from backend.SpeechToText import SpeechRecognition
 from backend.TextToSpeech import TextToSpeech
 from backend.ImageGeneration import GenerateImage, ExtractImagePrompt
-from backend.Reminders import ParseReminderRequest, SaveReminder, TakeDueReminders
+from backend import Workspace as WorkspaceFiles
+from backend.Reminders import (
+    AcknowledgeReminder,
+    IsReminderAcknowledgement,
+    ListReminders,
+    ParseReminderRequest,
+    SaveReminder,
+    TakeDueReminders,
+)
+from backend.Announcements import IsSpeechStopCommand, TimeOfDayGreeting
+from backend.News import FetchBreakingNews, GetUnannouncedBreakingNews
+from backend.DesktopControl import (
+    click_control,
+    close_current_tab,
+    describe_generated_image,
+    describe_screen,
+    open_new_tab,
+    parse_desktop_request,
+)
+from backend.IntentRouting import (
+    intent_from_decision,
+    parse_image_generation_request,
+    parse_music_request,
+)
+from backend.Music import PlaySpotifyLikedSongs
 from dotenv import dotenv_values
 from time import sleep
 import threading
 import json
 import os
 import sys
+from pathlib import Path
 
 
 # Additional imports for chatbot functionality
@@ -57,7 +92,11 @@ Username = env_vars.get("Username", env_vars.get("USERNAME", "User"))
 AssistantName = env_vars.get("AssistantName", env_vars.get("ASSISTANT_NAME", "AIKO"))
 DefaultMessage = f'''{Username} : Hello {AssistantName}, How are you?
 {AssistantName} : Welcome {Username}, I am doing great, how can I assist you today?'''
-SupportedFunctions = ["open", "close", "play", "system", "content", "google search", "youtube search", "generate image"]
+SupportedFunctions = [
+    "open", "close", "play", "spotify", "system", "content",
+    "google search", "youtube search", "generate image", "workspace",
+    "reminder",
+]
 
 
 # Additional env vars for chatbot
@@ -67,6 +106,11 @@ GroqAPIKEY = env_vars.get("GroqApiKey")
 # Debug flag: set to True to enable debug prints added for troubleshooting
 DEBUG = False
 _speech_lock = threading.Lock()
+_speech_recognition_lock = threading.Lock()
+_active_reminder_lock = threading.Lock()
+_active_reminder = None
+_reminder_acknowledged = threading.Event()
+_google_search_pending = False
 
 
 # Initialize an empty list to store chat messages.
@@ -240,7 +284,13 @@ def RealTimeInformation():
 
 def ChatBot(Query, retry_count=0, max_retries=3):
     """Wrapper to use the backend ChatBot."""
-    return BackendChatBot(Query, retry_count, max_retries)
+    workspace_context = GetWorkspaceContext()
+    return BackendChatBot(
+        Query,
+        retry_count,
+        max_retries,
+        workspace_context=workspace_context,
+    )
 def InitalExecution():
     SetMicrophoneStatus("False")
     active_chat = GetActiveChatLogPath()
@@ -265,7 +315,7 @@ def _normalize_command_request(query):
         normalized = request_frame.group(1).strip()
 
     command_start = re.match(
-        r"^(?:open|launch|start|close|exit|quit|play|find|look for|search|"
+        r"^(?:tell|open|launch|start|close|exit|quit|click|select|press|describe|explain|play|find|look for|search|"
         r"google|youtube|generate|create|make|draw|design|render|paint|"
         r"write|remind|set|save|add|schedule|plan|turn|mute|unmute|increase|"
         r"decrease|volume)\b",
@@ -297,10 +347,103 @@ def _normalize_command_request(query):
     return normalized.strip()
 
 
+def _google_search_subject(text):
+    subject = text.strip(" \t\r\n.,!?")
+    subject = re.sub(
+        r"^(?:(?:and|then)\s+)?"
+        r"(?:(?:please|can you|could you|would you)\s+)?"
+        r"(?:(?:search|look up|find)\s+(?:for\s+)?)?",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    )
+    subject = re.sub(
+        r"^(?:(?:let me see|let's see|show me|tell me|"
+        r"i want to see|i'd like to see|can i see|"
+        r"what(?:'s| is| are| does| do)?|"
+        r"how(?:'s| is| are| does| do)?)\s+)+",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    )
+    subject = re.sub(
+        r"^(?:(?:the|a|an|th)\s+)+",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    )
+    subject = re.sub(
+        r"\s+(?:look|looks|looking)\s+like(?:\s+.+)?$",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    )
+    subject = re.sub(
+        r"\s+(?:please|for me|for us)\s*$",
+        "",
+        subject,
+        flags=re.IGNORECASE,
+    )
+    return subject.strip(" \t\r\n.,!?")
+
+
 def _classify_query(query):
+    global _google_search_pending
     original = query.strip()
     normalized = _normalize_command_request(original)
     lowered = normalized.lower()
+    if _google_search_pending:
+        if re.fullmatch(
+            r"(?:open|launch|start)\s+(?:up\s+)?google",
+            normalized,
+            re.IGNORECASE,
+        ):
+            _google_search_pending = False
+            return "open google"
+        _google_search_pending = False
+        search_subject = _google_search_subject(normalized)
+        if search_subject:
+            return f"google search {search_subject}"
+        return "google search"
+
+    google_open_request = re.match(
+        r"^(?:open|launch|start)\s+(?:up\s+)?google\b(.*)$",
+        normalized,
+        re.IGNORECASE,
+    )
+    if google_open_request:
+        search_subject = _google_search_subject(google_open_request.group(1))
+        return (
+            f"google search {search_subject}"
+            if search_subject
+            else "open google"
+        )
+
+    google_search_request = re.match(
+        r"^(?:(?:please|can you|could you|would you)\s+)?"
+        r"(?:(?:search|look up|find)\s+(?:for\s+)?)?"
+        r"(?:google(?:\s+search)?|search\s+google)(?:\s+for)?\s*(.*)$",
+        normalized,
+        re.IGNORECASE,
+    )
+    if google_search_request and re.search(r"\bgoogle\b", normalized, re.I):
+        search_subject = _google_search_subject(google_search_request.group(1))
+        return f"google search {search_subject}" if search_subject else "open google"
+    workspace_request = WorkspaceFiles.parse_workspace_command(normalized)
+    if workspace_request:
+        action, payload = workspace_request
+        return f"workspace {action} {payload}".strip()
+    desktop_request = parse_desktop_request(normalized)
+    if desktop_request:
+        action, payload = desktop_request
+        return f"desktop {action} {payload}".strip()
+    image_prompt = parse_image_generation_request(normalized)
+    if image_prompt is not None:
+        return f"generate image({image_prompt})"
+    music_request = parse_music_request(normalized)
+    if music_request is not None:
+        return music_request
+
     close_request = re.match(
         r"^(?:please\s+)?(?:close|exit|quit)\s+(.+)$",
         normalized,
@@ -312,6 +455,7 @@ def _classify_query(query):
         return "exit"
     if re.search(
         r"^(?:remind(?:\s+me)?\b|reminder\b|set\s+(?:a\s+)?reminder\b|"
+        r"set\s+me\s+(?:a\s+)?reminder\b|"
         r"schedule\b|plan\s+for\b|(?:save|add)\s+(?:(?:an?|the|this)\s+)?"
         r"(?:reminder|event)\b)",
         normalized,
@@ -334,51 +478,6 @@ def _classify_query(query):
             "3": 3, "three": 3, "third": 3,
         }[option_match.group(1).lower()]
         return f"choose image {option_number}"
-    if re.fullmatch(r"(?:please\s+)?generate[.!?]*", normalized, re.IGNORECASE):
-        return "generate image()"
-
-    blueprint_request = re.match(
-        r"^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?"
-        r"(?:create|make|generate|draw|design)\s+"
-        r"(?:(?:me)\s+)?(?:an?\s+)?blueprint\b"
-        r"(?:\s+(?:of|for|showing|about))?\s*(.*)$",
-        normalized,
-        re.IGNORECASE,
-    )
-    if blueprint_request:
-        blueprint_subject = blueprint_request.group(1).strip(" \t\r\n.,!?")
-        image_prompt = "blueprint"
-        if blueprint_subject:
-            image_prompt = f"blueprint of {blueprint_subject}"
-        return f"generate image({image_prompt})"
-
-    image_request = re.match(
-        r"^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?"
-        r"(?:generate|create|make|draw|design|render|paint)\s+"
-        r"(?:(?:me)\s+)?(?:(?:an?|the)\s+)?"
-        r"(?:image|iamge|picture|photo|photograph|illustration|artwork|art)\b"
-        r"(?:\s+(?:of|about|showing|depicting|with))?\s*(.*)$",
-        normalized,
-        re.IGNORECASE,
-    )
-    if not image_request:
-        image_request = re.match(
-            r"^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?"
-            r"make\s+(?:me\s+)?a\s+(.+)$",
-            normalized,
-            re.IGNORECASE,
-        )
-    if image_request:
-        image_prompt = image_request.group(1).strip(" \t\r\n.,!?")
-        image_prompt = re.sub(
-            r"^(?:(?:an?|the)\s+)?(?:image|picture|photo|artwork|art)\s+"
-            r"(?:of|about|showing|depicting|with)\s+",
-            "",
-            image_prompt,
-            flags=re.IGNORECASE,
-        ).strip(" \t\r\n.,!?")
-        return f"generate image({image_prompt})"
-
     youtube_open_request = re.match(
         r"^(?:(?:please|can you|could you|would you)\s+)?"
         r"(?:open|launch|start)\s+(?:up\s+)?youtube\b"
@@ -468,33 +567,17 @@ def _classify_query(query):
         ).strip(" \t\r\n.,!?")
         return f"play {play_query}"
 
-    google_query = re.sub(
-        r"^(?:(?:please|can you|could you|would you)\s+)?",
-        "",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-    google_query = re.sub(
-        r"^(?:(?:open|search)\s+)?google(?:\s+search)?"
-        r"(?:\s+for)?\s*",
-        "",
-        google_query,
-        flags=re.IGNORECASE,
-    )
-    google_query = re.sub(
-        r"^search\s+for\s*",
-        "",
-        google_query,
-        flags=re.IGNORECASE,
-    )
-    google_query = re.sub(
-        r"\s+(?:on|using)\s+google\s*[?.!]*$",
-        "",
-        google_query,
-        flags=re.IGNORECASE,
-    ).strip(" \t\r\n.,!?")
     if re.search(r"\bgoogle\b|\bsearch\s+for\b", lowered):
-        return f"google search {google_query or normalized}"
+        google_query = re.sub(
+            r"\s+(?:on|using)\s+google\s*[?.!]*$",
+            "",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        search_subject = _google_search_subject(google_query)
+        if search_subject:
+            return f"google search {search_subject}"
+        return "open google"
 
     direct_commands = (
         ("open ", "open"),
@@ -534,7 +617,7 @@ def _classify_query(query):
     for candidate in candidates:
         if candidate.startswith("(") or candidate.lower() in {"unknown", "(unknown)", "(error)"}:
             continue
-        if re.match(r"^(general|realtime|generate image|open|close|play|system|content|google search|youtube search|exit)\b", candidate, re.I):
+        if re.match(r"^(general|realtime|generate image|workspace|spotify|open|close|play|system|content|google search|youtube search|reminder|exit)\b", candidate, re.I):
             return candidate
     print(f"[ERROR] Intent classifier returned no usable intent for query: {original}")
     return f"general {original}"
@@ -568,6 +651,98 @@ def _speech_response(answer):
     return answer
 
 
+def _acknowledge_active_reminder(reminder_id):
+    global _active_reminder
+    with _active_reminder_lock:
+        if (
+            _active_reminder is None
+            or str(_active_reminder.get("id")) != str(reminder_id)
+        ):
+            return False
+        if not AcknowledgeReminder(reminder_id):
+            return False
+        _active_reminder = None
+        _reminder_acknowledged.set()
+    AcknowledgeReminderNotification(str(reminder_id))
+    return True
+
+
+def _expire_active_reminder(reminder_id):
+    if _acknowledge_active_reminder(reminder_id):
+        print(f"[INFO] Reminder {reminder_id} expired and was cleared.")
+
+
+def _start_reminder_expiry(reminder_id, timeout=2.0):
+    expiry_timer = threading.Timer(
+        timeout,
+        _expire_active_reminder,
+        args=(reminder_id,),
+    )
+    expiry_timer.daemon = True
+    expiry_timer.start()
+    return expiry_timer
+
+
+def _listen_for_speech_controls(stop_listening, speech_stopped, reminder_id):
+    while not stop_listening.is_set() and not speech_stopped.is_set():
+        if GetMicrophoneStatus().strip() != "True":
+            stop_listening.wait(0.1)
+            continue
+        try:
+            with _speech_recognition_lock:
+                phrase = SpeechRecognition(
+                    timeout=1,
+                    phrase_time_limit=2,
+                    update_status=False,
+                )
+        except Exception as error:
+            print(f"[ERROR] Speech-control listening failed: {error}")
+            stop_listening.wait(0.2)
+            continue
+        if not phrase:
+            continue
+        if IsSpeechStopCommand(phrase):
+            speech_stopped.set()
+            SetAssistantStatus("Speech stopped.")
+            return
+        if (
+            reminder_id
+            and IsReminderAcknowledgement(phrase)
+            and _acknowledge_active_reminder(reminder_id)
+        ):
+            speech_stopped.set()
+            return
+
+
+def _speak_text(text, reminder_id=None):
+    speech_stopped = threading.Event()
+    stop_listening = threading.Event()
+    listener = None
+    if reminder_id is None:
+        with _active_reminder_lock:
+            reminder_id = (
+                str(_active_reminder["id"])
+                if _active_reminder is not None
+                else None
+            )
+    with _speech_lock:
+        if GetMicrophoneStatus().strip() == "True":
+            listener = threading.Thread(
+                target=_listen_for_speech_controls,
+                args=(stop_listening, speech_stopped, reminder_id),
+                daemon=True,
+            )
+            listener.start()
+        try:
+            TextToSpeech(
+                text,
+                func=lambda _result=None: not speech_stopped.is_set(),
+                level_callback=SetSpeechLevel,
+            )
+        finally:
+            stop_listening.set()
+
+
 def MainExecution(Query):
     query = Query.strip()
     if not query:
@@ -575,18 +750,35 @@ def MainExecution(Query):
     handled_by_chat_service = False
     user_logged = False
     assistant_logged = False
+    local_vision_response = False
     try:
         SetAssistantStatus("Processing...")
         active_chat = GetActiveChatLogPath()
         os.environ["AIKO_CHAT_LOG"] = active_chat
+        with _active_reminder_lock:
+            reminder_id = (
+                str(_active_reminder["id"])
+                if _active_reminder is not None
+                else None
+            )
+        if reminder_id and IsReminderAcknowledgement(query):
+            if _acknowledge_active_reminder(reminder_id):
+                append_to_chatlogs("user", query)
+                append_to_chatlogs(
+                    "assistant", "Reminder acknowledged and cleared."
+                )
+                UpdateConversationOrbCategory(
+                    active_chat, query, "reminder acknowledgement"
+                )
+                ActivateConversation(active_chat)
+                SetAssistantStatus("Reminder acknowledged.")
+                return
         decision = _classify_query(query)
-        intent = decision.split("(", 1)[0].split(" ", 1)[0].lower()
+        intent = intent_from_decision(decision)
         print(f"[DEBUG] Intent: {decision}")
         answer = ""
         handled_by_chat_service = intent in {"general", "realtime"}
 
-        if intent == "generate":
-            intent = "generate image"
         if intent == "choose":
             intent = "choose image"
             option_number = int(_intent_payload(decision, "choose image"))
@@ -600,7 +792,7 @@ def MainExecution(Query):
             if not image_prompt:
                 append_to_chatlogs("user", query)
                 user_logged = True
-                answer = "Are we designing something? What would you like me to generate?"
+                answer = "What would you like me to make an image of?"
             else:
                 append_to_chatlogs("user", query)
                 user_logged = True
@@ -609,7 +801,8 @@ def MainExecution(Query):
                 QueueImageGallery(image_prompt, image_paths)
                 answer = (
                     f"I generated three image options for '{image_prompt}'. "
-                    "Which one do you like best? Choose it to keep it; I’ll delete the other two."
+                    "Choose option 1, 2, or 3 to keep it; I’ll delete the other two. "
+                    "Then ask me to describe the selected image."
                 )
         elif intent == "reminder":
             append_to_chatlogs("user", query)
@@ -624,10 +817,71 @@ def MainExecution(Query):
                     saved_reminder["due_at"]
                 ).strftime("%A, %B %d at %I:%M %p")
                 answer = f"I'll remind you about {reminder_title} on {due_label}."
+        elif intent == "desktop":
+            action, _, payload = _intent_payload(decision, "desktop").partition(" ")
+            append_to_chatlogs("user", query)
+            user_logged = True
+            SetAssistantStatus(
+                "Reading screen once..."
+                if action == "screen"
+                else "Describing selected image..."
+                if action == "image"
+                else "Controlling desktop..."
+            )
+            if action == "screen":
+                local_vision_response = True
+                answer = describe_screen()
+            elif action == "image":
+                local_vision_response = True
+                image_path, image_prompt = GetSelectedGeneratedImage()
+                answer = describe_generated_image(image_path, image_prompt)
+            elif action == "new_tab":
+                answer = open_new_tab()
+            elif action == "close_tab":
+                answer = close_current_tab()
+            elif action == "click":
+                if not payload:
+                    raise ValueError("Tell me the exact name of the button, link, option, or tab.")
+                answer = click_control(payload)
+            else:
+                raise ValueError(f"Unsupported desktop action: {action}.")
+        elif intent == "workspace":
+            action, _, payload = _intent_payload(decision, "workspace").partition(" ")
+            append_to_chatlogs("user", query)
+            user_logged = True
+            SetAssistantStatus("Updating workspace...")
+            if action == "create":
+                if not payload:
+                    answer = "What would you like me to create as a 3D project?"
+                else:
+                    answer = ControlWorkspace("create", payload)
+            elif action in {"add_part", "remove_part", "import_file", "remove_file"}:
+                answer = ControlWorkspace(action, payload)
+            elif action == "open":
+                OpenWorkspace()
+                answer = "I opened the AIKO Workspace."
+            else:
+                answer = ControlWorkspace(action, payload)
+        elif intent == "spotify":
+            append_to_chatlogs("user", query)
+            user_logged = True
+            SetAssistantStatus("Opening Spotify...")
+            PlaySpotifyLikedSongs()
+            answer = "Opening your Spotify Liked Songs."
+        elif (
+            intent == "google"
+            and decision.strip().lower().startswith("google search")
+            and not _intent_payload(decision, "google search")
+        ):
+            global _google_search_pending
+            _google_search_pending = True
+            append_to_chatlogs("user", query)
+            user_logged = True
+            answer = "What would you like me to search for on Google?"
         elif intent == "play" and not _intent_payload(decision, "play"):
             append_to_chatlogs("user", query)
             user_logged = True
-            answer = "What would you like me to play on YouTube?"
+            answer = "What would you like me to play?"
         elif intent in {"open", "close", "play", "system", "content", "google", "youtube"}:
             payload = _intent_payload(decision, intent)
             if intent == "google":
@@ -642,7 +896,11 @@ def MainExecution(Query):
             user_logged = True
             SetAssistantStatus("Executing Task...")
             if intent == "open":
-                if payload.strip().lower() in {"youtube", "youtube.com"}:
+                if payload.strip().lower() in {"google", "google.com"}:
+                    GoogleSearchAuto("")
+                    _google_search_pending = True
+                    answer = "Google is open. What would you like me to search for?"
+                elif payload.strip().lower() in {"youtube", "youtube.com"}:
                     YouTubeSearch("")
                     answer = "Opening YouTube."
                 else:
@@ -688,12 +946,11 @@ def MainExecution(Query):
         ActivateConversation(active_chat)
         print(f"[DEBUG] Assistant response: {answer}")
         SetAssistantStatus("Answering...")
+        if local_vision_response:
+            SetAssistantStatus("Description shown in chat (kept local).")
+            return
         try:
-            with _speech_lock:
-                TextToSpeech(
-                    _speech_response(str(answer)),
-                    level_callback=SetSpeechLevel,
-                )
+            _speak_text(_speech_response(str(answer)))
         except Exception as speech_error:
             print(f"[ERROR] Could not speak the response: {speech_error}", flush=True)
             SetAssistantStatus(f"Speech unavailable: {speech_error}")
@@ -715,10 +972,12 @@ def MainExecution(Query):
         except Exception as history_error:
             print(f"[ERROR] Could not update chat history: {history_error}")
             ShowTextToScreen(f"{Username}: {query}\n{AssistantName}: {error_message}")
+        if local_vision_response:
+            SetAssistantStatus("Local vision failed; see chat for details.")
+            return
         SetAssistantStatus("Answering...")
         try:
-            with _speech_lock:
-                TextToSpeech(error_message, level_callback=SetSpeechLevel)
+            _speak_text(error_message)
         except Exception as speech_error:
             print(f"[ERROR] Could not speak the error response: {speech_error}", flush=True)
             SetAssistantStatus(f"Speech unavailable: {speech_error}")
@@ -739,7 +998,8 @@ def FirstThread():
                 continue
             SetAssistantStatus("Opening microphone...")
             try:
-                Query = SpeechRecognition()
+                with _speech_recognition_lock:
+                    Query = SpeechRecognition()
                 if GetAssistantStatus().startswith("Microphone unavailable:"):
                     while GetMicrophoneStatus().strip() == "True":
                         sleep(0.2)
@@ -767,31 +1027,90 @@ def SecondThread():
 
 def ReminderThread():
     """Deliver due reminders, including those that became due while AIKO was closed."""
+    announced_ids = set()
     while True:
         try:
-            due_reminders = TakeDueReminders()
+            TakeDueReminders()
+            saved_reminders = ListReminders()
         except (OSError, RuntimeError, ValueError) as error:
             print(f"[ERROR] Could not check saved reminders: {error}")
             sleep(5)
             continue
 
-        for reminder in due_reminders:
+        for reminder in saved_reminders:
+            reminder_id = str(reminder.get("id", ""))
+            if (
+                not reminder.get("notified")
+                or not reminder_id
+                or reminder_id in announced_ids
+            ):
+                continue
             title = str(reminder.get("title", "")).strip()
             if not title:
+                announced_ids.add(reminder_id)
                 continue
-            listening = GetMicrophoneStatus().strip() == "True"
+            announced_ids.add(reminder_id)
+            global _active_reminder
+            with _active_reminder_lock:
+                _active_reminder = reminder
+                _reminder_acknowledged.clear()
+            ShowReminderNotification(reminder)
+            expiry_timer = _start_reminder_expiry(reminder_id)
             try:
-                with _speech_lock:
-                    SetAssistantStatus("Answering...")
-                    TextToSpeech(
-                        f"Reminder: {title}.",
-                        level_callback=SetSpeechLevel,
-                    )
+                SetAssistantStatus("Reminder...")
+                _speak_text(f"Reminder: {title}.", reminder_id)
             except Exception as speech_error:
                 print(f"[ERROR] Could not speak reminder '{title}': {speech_error}")
-            finally:
-                SetAssistantStatus("Listening..." if listening else "Available...")
+            while not _reminder_acknowledged.wait(0.25):
+                with _active_reminder_lock:
+                    if (
+                        _active_reminder is None
+                        or str(_active_reminder.get("id")) != reminder_id
+                    ):
+                        break
+            with _active_reminder_lock:
+                if (
+                    _active_reminder is not None
+                    and str(_active_reminder.get("id")) == reminder_id
+                ):
+                    _active_reminder = None
+            expiry_timer.cancel()
+            SetAssistantStatus(
+                "Listening..."
+                if GetMicrophoneStatus().strip() == "True"
+                else "Available..."
+            )
         sleep(2)
+
+
+def NewsAndGreetingThread():
+    """Announce the current time period and only newly discovered major headlines."""
+    current_greeting = None
+    next_news_check = 0.0
+    while True:
+        now = datetime.datetime.now().astimezone()
+        greeting = TimeOfDayGreeting(now)
+        if greeting != current_greeting:
+            current_greeting = greeting
+            _speak_text(f"{greeting}, {Username}.")
+
+        if now.timestamp() >= next_news_check:
+            try:
+                stories = FetchBreakingNews()
+                UpdateBreakingNews(stories)
+                new_stories = GetUnannouncedBreakingNews(stories)
+            except (OSError, RuntimeError, ValueError) as error:
+                print(f"[ERROR] Could not check breaking news: {error}")
+                UpdateBreakingNews([], str(error))
+                next_news_check = now.timestamp() + 60
+            else:
+                if new_stories:
+                    headlines = "; ".join(
+                        story["title"] for story in new_stories[:2]
+                    )
+                    _speak_text(f"Major breaking news. {headlines}.")
+                next_news_check = now.timestamp() + 300
+        sleep(20)
 
 
 def InitializeAIKO():
@@ -977,7 +1296,11 @@ if __name__ == "__main__":
     # Start the main threads
     reminder_thread = threading.Thread(target=ReminderThread, daemon=True)
     reminder_thread.start()
+    announcements_thread = threading.Thread(
+        target=NewsAndGreetingThread,
+        daemon=True,
+    )
+    announcements_thread.start()
     thread2 = threading.Thread(target=FirstThread, daemon=True)
     thread2.start()
     SecondThread()
- 

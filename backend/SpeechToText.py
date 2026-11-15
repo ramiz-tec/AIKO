@@ -131,7 +131,7 @@ def UniversalTranslator(Text):
 
 
 # Function to perform speech recognition using the WebDriver.
-def SpeechRecognition(timeout=2, phrase_time_limit=30):
+def SpeechRecognition(timeout=2, phrase_time_limit=30, update_status=True):
     """Capture speech from microphone and convert to text using Google Speech Recognition with improved continuous listening."""
     global ambient_noise_calibrated
     microphone_device_path = os.path.join(
@@ -149,7 +149,8 @@ def SpeechRecognition(timeout=2, phrase_time_limit=30):
     try:
         with sr.Microphone(device_index=device_index) as source:
             print("[DEBUG] Listening for speech...", flush=True)
-            SetAssistantStatus("Listening...")
+            if update_status:
+                SetAssistantStatus("Listening...")
            
             if not ambient_noise_calibrated:
                 recognizer.adjust_for_ambient_noise(source, duration=0.5)
@@ -161,7 +162,8 @@ def SpeechRecognition(timeout=2, phrase_time_limit=30):
                     timeout=timeout,
                     phrase_time_limit=phrase_time_limit,
                 )
-                SetAssistantStatus("Processing...")
+                if update_status:
+                    SetAssistantStatus("Processing...")
                
                 # Use Google Speech Recognition
                 text = recognizer.recognize_google(audio, language=InputLanguage)
@@ -170,16 +172,19 @@ def SpeechRecognition(timeout=2, phrase_time_limit=30):
                 if "en" in InputLanguage.lower():
                     return QueryModifier(text)
                 else:
-                    SetAssistantStatus("Translating...")
+                    if update_status:
+                        SetAssistantStatus("Translating...")
                     return QueryModifier(UniversalTranslator(text))
                    
             except sr.UnknownValueError:
                 print("[DEBUG] Audio received, but no speech was recognized.", flush=True)
-                SetAssistantStatus("Listening...")
+                if update_status:
+                    SetAssistantStatus("Listening...")
                 return ""
             except sr.WaitTimeoutError:
                 print("[DEBUG] No speech detected before the listening timeout.", flush=True)
-                SetAssistantStatus("Listening...")
+                if update_status:
+                    SetAssistantStatus("Listening...")
                 return ""
             except sr.RequestError as e:
                 print(f"[DEBUG] Speech recognition service error: {e}", flush=True)
@@ -188,7 +193,8 @@ def SpeechRecognition(timeout=2, phrase_time_limit=30):
     except Exception as e:
         print(f"[ERROR] SpeechRecognition error ({type(e).__name__}): {e!r}", flush=True)
         traceback.print_exc()
-        SetAssistantStatus(f"Microphone unavailable: {e}")
+        if update_status:
+            SetAssistantStatus(f"Microphone unavailable: {e}")
         return ""
 
 
@@ -201,7 +207,6 @@ if __name__ == "__main__":
         print(Text)
    
                                    
-
 
 
 
